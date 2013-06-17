@@ -36,6 +36,10 @@ packager.generate = function(platform, commitId, useWindowsLineEndings) {
     var libraryDebug   = packager.bundle(platform, true, commitId);
     
     time = new Date().valueOf() - time;
+    if (!fs.existsSync('pkg')) {
+      fs.mkdirSync('pkg');
+      fs.mkdirSync('pkg/debug');
+    }
     outFile = path.join('pkg', 'cordova.' + platform + '.js');
     fs.writeFileSync(outFile, libraryRelease, 'utf8');
     
@@ -57,6 +61,7 @@ packager.bundle = function(platform, debug, commitId ) {
 
         //Test platform needs to bring in platform specific plugin's for testing
         copyProps(modules, collectFiles(path.join('lib', 'blackberry', 'plugin'), 'plugin'));
+        copyProps(modules, collectFiles(path.join('lib', 'blackberry10', 'plugin'), 'plugin'));
         copyProps(modules, collectFiles(path.join('lib', 'firefoxos', 'plugin', 'firefoxos'), 'plugin/firefoxos'));
         copyProps(modules, collectFiles(path.join('lib', 'tizen', 'plugin', 'tizen'), 'plugin/tizen'));
         copyProps(modules, collectFiles(path.join('lib', 'windowsphone', 'plugin', 'windowsphone'), 'plugin/windowsphone'));
@@ -64,6 +69,7 @@ packager.bundle = function(platform, debug, commitId ) {
         copyProps(modules, collectFiles(path.join('lib', 'ios', 'plugin', 'ios'), 'plugin/ios/'));
         copyProps(modules, collectFiles(path.join('lib', 'bada', 'plugin', 'bada'), 'plugin/bada/'));
         copyProps(modules, collectFiles(path.join('lib', 'android', 'plugin', 'android'), 'plugin/android/'));
+        copyProps(modules, collectFiles(path.join('lib', 'osx', 'plugin', 'osx'), 'plugin/osx/'));
     }
     else {
         copyProps(modules, collectFiles(path.join('lib', platform)))
@@ -71,14 +77,14 @@ packager.bundle = function(platform, debug, commitId ) {
 
     var output = [];
 	
-    output.push("// Platform: " + platform + "\n");
-    output.push("// "  + commitId + "\n");
-	output.push("// File generated at :: "  + new Date() + "\n");
+    output.push("// Platform: " + platform);
+    output.push("// "  + commitId);
 
-    // write header     
-    output.push('/*\n' + getContents('LICENSE-for-js-file.txt') + '\n*/')
-    output.push('\n;(function() {\n')
-    
+    // write header
+    output.push('/*', getContents('LICENSE-for-js-file.txt'), '*/')
+    output.push(';(function() {')
+    output.push("var CORDOVA_JS_BUILD_LABEL = '"  + commitId + "';");
+
     // write initial scripts
     if (!scripts['require']) {
         throw new Error("didn't find a script for 'require'")
@@ -96,7 +102,7 @@ packager.bundle = function(platform, debug, commitId ) {
         writeModule(output, modules[moduleId], moduleId, debug)
     }
 
-    output.push("\nwindow.cordova = require('cordova');\n")
+    output.push("window.cordova = require('cordova');")
 
     // write final scripts
     if (!scripts['bootstrap']) {
@@ -110,8 +116,18 @@ packager.bundle = function(platform, debug, commitId ) {
         writeScript(output, scripts[bootstrapPlatform], debug)
     }
 
+    // Include the plugin loading code.
+    if (platform !== 'test') {
+        // NB: This should probably run last of all, and definitely after the bootstrap.
+        if (!scripts['plugin_loader']) {
+            throw new Error("didn't find a script for 'plugin_loader'");
+        }
+
+        writeScript(output, scripts['plugin_loader'], debug);
+    }
+
     // write trailer
-    output.push('\n})();')
+    output.push('})();')
 
     return output.join('\n')
 }

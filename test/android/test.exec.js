@@ -56,39 +56,40 @@ describe('exec.processMessages', function () {
     }
 
     describe('exec', function() {
-        it('should return payload value when plugin is synchronous', function() {
-            var winSpy = jasmine.createSpy('win');
+        it('should process messages in order even when called recursively', function() {
+            var firstCallbackId = null;
+            var callCount = 0;
             nativeApi.exec.andCallFake(function(service, action, callbackId, argsJson) {
-                return createCallbackMessage(true, true, 1, callbackId, 't');
+                ++callCount;
+                if (callCount == 1) {
+                    firstCallbackId = callbackId;
+                    return '';
+                }
+                if (callCount == 2) {
+                    return createCallbackMessage(true, false, 1, firstCallbackId, 't') +
+                           createCallbackMessage(true, false, 1, callbackId, 'stwo');
+                }
+                return createCallbackMessage(true, false, 1, callbackId, 'sthree');
             });
 
-            var result = exec(winSpy, null, 'Service', 'action', []);
-            expect(winSpy).toHaveBeenCalledWith(true);
-            expect(result).toBe(true);
-        });
-        it('should return payload value when plugin is synchronous and no callbacks are used', function() {
-            nativeApi.exec.andCallFake(function(service, action, callbackId, argsJson) {
-                return createCallbackMessage(true, true, 1, callbackId, 't');
-            });
+            var win2Called = false;
+            var winSpy3 = jasmine.createSpy('win3');
 
-            var result = exec(null, null, 'Service', 'action', []);
-            expect(result).toBe(true);
-        });
-        it('should return payload value when plugin is synchronous even when called recursively', function() {
-            var winSpy = jasmine.createSpy('win');
-            nativeApi.exec.andCallFake(function(service, action, callbackId, argsJson) {
-                return createCallbackMessage(true, true, 1, callbackId, 't');
-            });
-
-            function firstWin(value) {
+            function win1(value) {
                 expect(value).toBe(true);
-                var result = exec(winSpy, null, 'Service', 'action', []);
-                expect(result).toBe(true);
+                exec(winSpy3, null, 'Service', 'action', []);
+                expect(win2Called).toBe(false, 'win1 should finish before win2 starts');
             }
 
-            var result2 = exec(firstWin, null, 'Service', 'action', []);
-            expect(winSpy).toHaveBeenCalledWith(true);
-            expect(result2).toBe(true);
+            function win2(value) {
+                win2Called = true;
+                expect(value).toBe('two');
+                expect(winSpy3).not.toHaveBeenCalled();
+            }
+
+            exec(win1, null, 'Service', 'action', []);
+            exec(win2, null, 'Service', 'action', []);
+            expect(winSpy3).toHaveBeenCalledWith('three');
         });
     });
 
@@ -107,50 +108,50 @@ describe('exec.processMessages', function () {
         it('should handle payloads of false', function() {
             var messages = createCallbackMessage(true, true, 1, 'id', 'f');
             exec.processMessages(messages);
-            expect(callbackSpy).toHaveBeenCalledWith('id', true, 1, false, true);
+            expect(callbackSpy).toHaveBeenCalledWith('id', true, 1, [false], true);
         });
         it('should handle payloads of true', function() {
             var messages = createCallbackMessage(true, true, 1, 'id', 't');
             exec.processMessages(messages);
-            expect(callbackSpy).toHaveBeenCalledWith('id', true, 1, true, true);
+            expect(callbackSpy).toHaveBeenCalledWith('id', true, 1, [true], true);
         });
         it('should handle payloads of null', function() {
             var messages = createCallbackMessage(true, true, 1, 'id', 'N');
             exec.processMessages(messages);
-            expect(callbackSpy).toHaveBeenCalledWith('id', true, 1, null, true);
+            expect(callbackSpy).toHaveBeenCalledWith('id', true, 1, [null], true);
         });
         it('should handle payloads of numbers', function() {
             var messages = createCallbackMessage(true, true, 1, 'id', 'n-3.3');
             exec.processMessages(messages);
-            expect(callbackSpy).toHaveBeenCalledWith('id', true, 1, -3.3, true);
+            expect(callbackSpy).toHaveBeenCalledWith('id', true, 1, [-3.3], true);
         });
         it('should handle payloads of strings', function() {
             var messages = createCallbackMessage(true, true, 1, 'id', 'sHello world');
             exec.processMessages(messages);
-            expect(callbackSpy).toHaveBeenCalledWith('id', true, 1, 'Hello world', true);
+            expect(callbackSpy).toHaveBeenCalledWith('id', true, 1, ['Hello world'], true);
         });
         it('should handle payloads of JSON objects', function() {
             var messages = createCallbackMessage(true, true, 1, 'id', '{"a":1}');
             exec.processMessages(messages);
-            expect(callbackSpy).toHaveBeenCalledWith('id', true, 1, {a:1}, true);
+            expect(callbackSpy).toHaveBeenCalledWith('id', true, 1, [{a:1}], true);
         });
         it('should handle payloads of JSON arrays', function() {
             var messages = createCallbackMessage(true, true, 1, 'id', '[1]');
             exec.processMessages(messages);
-            expect(callbackSpy).toHaveBeenCalledWith('id', true, 1, [1], true);
+            expect(callbackSpy).toHaveBeenCalledWith('id', true, 1, [[1]], true);
         });
         it('should handle other callback opts', function() {
             var messages = createCallbackMessage(false, false, 3, 'id', 'sfoo');
             exec.processMessages(messages);
-            expect(callbackSpy).toHaveBeenCalledWith('id', false, 3, 'foo', false);
+            expect(callbackSpy).toHaveBeenCalledWith('id', false, 3, ['foo'], false);
         });
         it('should handle multiple messages', function() {
             var message1 = createCallbackMessage(false, false, 3, 'id', 'sfoo');
             var message2 = createCallbackMessage(true, true, 1, 'id', 'f');
             var messages = message1 + message2;
             exec.processMessages(messages);
-            expect(callbackSpy).toHaveBeenCalledWith('id', false, 3, 'foo', false);
-            expect(callbackSpy).toHaveBeenCalledWith('id', true, 1, false, true);
+            expect(callbackSpy).toHaveBeenCalledWith('id', false, 3, ['foo'], false);
+            expect(callbackSpy).toHaveBeenCalledWith('id', true, 1, [false], true);
         });
         it('should poll for more messages when hitting an *', function() {
             var message1 = createCallbackMessage(false, false, 3, 'id', 'sfoo');
@@ -161,10 +162,10 @@ describe('exec.processMessages', function () {
             });
             var messages = message1 + '*';
             exec.processMessages(messages);
-            expect(callbackSpy).toHaveBeenCalledWith('id', false, 3, 'foo', false);
+            expect(callbackSpy).toHaveBeenCalledWith('id', false, 3, ['foo'], false);
             waitsFor(function() { return nativeApi.retrieveJsMessages.wasCalled }, 500);
             runs(function() {
-                expect(callbackSpy).toHaveBeenCalledWith('id', true, 1, false, true);
+                expect(callbackSpy).toHaveBeenCalledWith('id', true, 1, [false], true);
             });
         });
         it('should call callbacks in order when one callback enqueues another.', function() {
@@ -179,9 +180,9 @@ describe('exec.processMessages', function () {
             });
             exec.processMessages(message1 + message2);
             expect(callbackSpy.argsForCall.length).toEqual(3);
-            expect(callbackSpy.argsForCall[0]).toEqual(['id', false, 3, 'call1', false]);
-            expect(callbackSpy.argsForCall[1]).toEqual(['id', false, 3, 'call2', false]);
-            expect(callbackSpy.argsForCall[2]).toEqual(['id', false, 3, 'call3', false]);
+            expect(callbackSpy.argsForCall[0]).toEqual(['id', false, 3, ['call1'], false]);
+            expect(callbackSpy.argsForCall[1]).toEqual(['id', false, 3, ['call2'], false]);
+            expect(callbackSpy.argsForCall[2]).toEqual(['id', false, 3, ['call3'], false]);
         });
     });
 });
