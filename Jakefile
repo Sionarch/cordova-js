@@ -124,7 +124,7 @@ task('build', ['clean', 'hint'], function () {
         packager.generate("tizen", version);
         packager.generate("webos",  version);
         packager.generate("osx",  version);
-        packager.generate("mosync",commitId);
+        packager.generate("mosync", version);
         packager.generate("errgen", version);
         packager.generate("test", version);
         complete();
